@@ -1,0 +1,175 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: devTemplate
+Resources: 
+  DevVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: DevVPC
+  DevGW:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: DevGW
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref DevVPC
+      InternetGatewayId: DevGW
+  webSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: us-east-1a
+      VpcId: !Ref DevVPC
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: True
+      Tags:
+        - Key: Name
+          Value: webSubnet
+  appSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: us-east-1a
+      VpcId: !Ref DevVPC
+      CidrBlock: 10.0.2.0/24
+      MapPublicIpOnLaunch: True
+      Tags:
+        - Key: Name
+          Value: appSubnet
+  subnetprivate1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: us-east-1a
+      VpcId: !Ref DevVPC
+      CidrBlock: 10.0.3.0/24
+      Tags:
+        - Key: Name
+          Value: DBSubnet
+  subnetprivate2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: us-east-1b
+      VpcId: !Ref DevVPC
+      CidrBlock: 10.0.4.0/24
+      Tags:
+        - Key: Name
+          Value: privateSubnet2
+  DevRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref DevVPC
+      Tags:
+        - Key: keyname
+          Value: publicRT
+  routeTableAssoc1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:  !Ref webSubnet
+      RouteTableId: !Ref DevRouteTable
+  routeTableAssoc2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref appSubnet
+      RouteTableId:  !Ref DevRouteTable
+  rdsDBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: allow rds traffic
+      SubnetIds:
+        - DBSubnet
+    Tags:
+      - Key: name
+        Value: DBSNG
+  DevSecuritygroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: allow traffic from port 80,443
+      VpcId: !Ref DevVPC
+      SecurityGroupIngress:
+      - ip protocol: tcp
+        Description: HTTP
+        from port: 80
+        to port: 80
+        CidrBlock: 0.0.0.0/0
+      - ip protocol: tcp 
+        Description: HTTPS
+        from port: 443
+        to port: 443
+        CidrBlock: 0.0.0.0/0
+      - ip protocol: tcp
+        Description: SSH
+        from port: 22
+        to port: 22
+        CidrBlock: 0.0.0.0/0
+      SecurityGroupEgress:
+      - ip protocol: -1 
+        from port: 0
+        to port: 65535
+        CidrBlock: 0.0.0.0/0
+    Tags:
+      - Key: Name
+        Value: DevSecurity     
+  myEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      KeyName: corazon-key-pair
+      ImageId: ami-07caf09b362be10b8 
+      InstanceType: t2.micro
+      SecurityGroupIds: 
+        - !Ref DevSecuritygroup
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          yum update -y
+          yum install httpd -y
+          service httpd start
+          chkconfig httpd on
+          wget https://jenkins-cicd-project.s3.amazonaws.com/project-photos/flora.jpg -O /var/www/html/image.jpg
+          echo "<html><h1>Welcome to vinTech</h1><img src='/image.jpg'></html>" > /var/www/html/index.html
+      Tags:
+      - Key: name
+        Value: appserver
+  myEC2Instance2:
+    Type: AWS::EC2::Instance
+    Properties:
+      KeyName: corazon-key-pair
+      ImageId: ami-07caf09b362be10b8 
+      InstanceType: t2.micro
+      SecurityGroupIds: 
+        - !Ref DevSecuritygroup
+      Tags:
+      - Key: name
+        Value: webserver
+  myEC2Instance3:
+    Type: AWS::EC2::Instance
+    Properties:
+      KeyName: corazon-key-pair
+      ImageId: ami-07caf09b362be10b8
+      SecurityGroupIds: 
+        - !Ref DevSecuritygroup
+      InstanceType: t2.micro
+      Tags:
+      - Key: name
+        Value: DBserver
+  rdsDBInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      AllocatedStorage: 30
+      DBInstanceClass: db.t3.micro 
+      AvailabilityZone: us-east-1a 
+      DBInstanceIdentifier: RDS
+      DBName: myRDS
+      DBSubnetGroupName: !Ref rdsDBSubnetGroup
+      MasterUsername: Manii
+      MasterUserPassword: cassava 
+      MultiAZ: false
+      StorageType: gp2
+      VPCSecurityGroups:
+        - !Ref DevSecuritygroup
+      Tags:
+        - Key: name
+          Value: database
